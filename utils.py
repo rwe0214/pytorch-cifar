@@ -7,6 +7,7 @@ import os
 import sys
 import time
 import math
+import copy
 
 import torch.nn as nn
 import torch.nn.init as init
@@ -122,3 +123,76 @@ def format_time(seconds):
     if f == '':
         f = '0ms'
     return f
+
+def partial_load(net, state_dict, num_layer=-1):
+    if num_layer == -1:
+        return
+
+    model_dict = net.state_dict()
+    excluded_layer_name = f'layer{num_layer+1}'
+    for name, weight in state_dict.items():
+        if excluded_layer_name in name:
+            break
+        model_dict[name] = weight
+
+    net.load_state_dict(model_dict)
+
+def freeze_layer(net, num_layer=-1):
+    if num_layer == -1:
+        return net
+
+    excluded_layer_name = f'layer{num_layer+1}'
+    for name, parameter in net.named_parameters():
+        if excluded_layer_name in name:
+            break
+        parameter.requires_grad = False
+
+    return net
+
+def freeze_bn(net, num_layer=-1):
+    if num_layer == -1:
+        return net
+
+    excluded_layer_name = f'layer{num_layer+1}'
+    for name, module in net.named_modules():
+        if excluded_layer_name in name:
+            break
+        if isinstance(module, nn.BatchNorm2d):
+            module.eval()
+
+    return net
+
+def different_lr(net, lr, num_layer=-1):
+    if num_layer == -1:
+        return net.parameters()
+
+    params = []
+    excluded_layer_name = f'layer{num_layer+1}'
+    excluded = False
+    for name, parameter in net.named_parameters():
+        if excluded_layer_name in name:
+            excluded = True
+
+        if excluded:
+            params.append({'params': parameter})
+        else:
+            params.append({'params': parameter, 'lr': lr})
+
+    return params
+
+def aggregate_models(models):
+    model = copy.deepcopy(models[0])
+    model.cpu()
+    for p in model.parameters():
+        p.data.zero_()
+    for m in models:
+        for (p_avg, p) in zip(model.parameters(), m.parameters()):
+            p_avg.data += p.data.cpu()
+    for p in model.parameters():
+        p.data /= len(models)
+    return model
+
+def distribute_models(avg_model, models):
+    for m in models:
+        for (p_avg, p) in zip(avg_model.parameters(), m.parameters()):
+            p.data = p_avg.to(p.device)
