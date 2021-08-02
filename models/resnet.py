@@ -1,11 +1,3 @@
-'''ResNet in PyTorch.
-
-For Pre-activation ResNet, see 'preact_resnet.py'.
-
-Reference:
-[1] Kaiming He, Xiangyu Zhang, Shaoqing Ren, Jian Sun
-    Deep Residual Learning for Image Recognition. arXiv:1512.03385
-'''
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -68,8 +60,16 @@ class Bottleneck(nn.Module):
         out += self.shortcut(x)
         out = F.relu(out)
         return out
-
-
+    
+class ConcatLayer(nn.Module):
+    def __init__(self, in_channels):
+        super(ConcatLayer, self).__init__()
+        self.conv1 = nn.Conv2d(in_channels, in_channels // 2, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(in_channels // 2)
+    
+    def forward(self, x, y):
+        return F.relu(self.bn1(self.conv1(torch.cat((x, y), 1))))
+    
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10):
         super(ResNet, self).__init__()
@@ -78,11 +78,86 @@ class ResNet(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layer1 = self._make_layer(block, 64, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 128, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 256, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 512, num_blocks[3], stride=2)
+        self.layers = []
+        self.layers.append(self._make_layer(block, 64, num_blocks[0], stride=1))
+        self.layers.append(self._make_layer(block, 128, num_blocks[1], stride=2))
+        self.layers.append(self._make_layer(block, 256, num_blocks[2], stride=2))
+        self.layers.append(self._make_layer(block, 512, num_blocks[3], stride=2))
         self.linear = nn.Linear(512*block.expansion, num_classes)
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x, y):
+        out = F.relu(self.bn1(self.conv1(x)))
+        for depth, layer in enumerate(self.layers):
+            out = layer(out)
+        out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
+    
+class EdgeResNet(nn.Module):
+    def __init__(self, block, num_blocks, cloud_model, depth, num_classes=10):
+        '''
+            depth: depth of the concat layer
+        '''
+        super(EdgeResNet, self).__init__()
+        self.in_planes = 64
+
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.layers = []
+        self.layers.append(self._make_layer(block, 64, num_blocks[0], stride=1))
+        self.layers.append(self._make_layer(block, 128, num_blocks[1], stride=2))
+        self.layers.append(self._make_layer(block, 256, num_blocks[2], stride=2))
+        self.layers.append(self._make_layer(block, 512, num_blocks[3], stride=2))
+        self.linear = nn.Linear(512*block.expansion, num_classes)
+        self.depth = depth
+        self.cloud_model = cloud_model
+        self.concat_layer = ConcatLayer(2 ** (depth + 6))
+
+    def _make_layer(self, block, planes, num_blocks, stride):
+        strides = [stride] + [1]*(num_blocks-1)
+        layers = []
+        for stride in strides:
+            layers.append(block(self.in_planes, planes, stride))
+            self.in_planes = planes * block.expansion
+        return nn.Sequential(*layers)
+
+    def forward(self, x, y):
+        out = F.relu(self.bn1(self.conv1(x)))
+        cloud_out = self.cloud_model(y)
+        for depth, layer in enumerate(self.layers):
+            if self.depth == depth:
+                out = self.concat_layer(out, cloud_out)
+            out = layer(out)
+        out = F.avg_pool2d(out, 4)
+        out = out.view(out.size(0), -1)
+        out = self.linear(out)
+        return out
+    
+class CloudResNet(nn.Module):
+    def __init__(self, block, num_blocks, depth, num_classes=10):
+        super(CloudResNet, self).__init__()
+        self.in_planes = 64
+
+        self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
+                               stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(64)
+        self.layers = []
+        self.layers.append(self._make_layer(block, 64, num_blocks[0], stride=1))
+        self.layers.append(self._make_layer(block, 128, num_blocks[1], stride=2))
+        self.layers.append(self._make_layer(block, 256, num_blocks[2], stride=2))
+        self.layers.append(self._make_layer(block, 512, num_blocks[3], stride=2))
+        self.linear = nn.Linear(512*block.expansion, num_classes)
+        self.depth = depth
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -94,39 +169,70 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         out = F.relu(self.bn1(self.conv1(x)))
-        out = self.layer1(out)
-        out = self.layer2(out)
-        out = self.layer3(out)
-        out = self.layer4(out)
+        for depth, layer in enumerate(self.layers):
+            if self.depth == depth:
+                return out
+            out = layer(out)
+            
         out = F.avg_pool2d(out, 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out
-
-
+    
 def ResNet18(**kwargs):
     return ResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
 
+def ResNet34(**kwargs):
+    return ResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
 
-def ResNet34():
-    return ResNet(BasicBlock, [3, 4, 6, 3])
+def ResNet50(**kwargs):
+    return ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
 
+def ResNet101(**kwargs):
+    return ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
 
-def ResNet50():
-    return ResNet(Bottleneck, [3, 4, 6, 3])
+def ResNet152(**kwargs):
+    return ResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
 
+def CloudResNet18(**kwargs):
+    return CloudResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
 
-def ResNet101():
-    return ResNet(Bottleneck, [3, 4, 23, 3])
+def CloudResNet34(**kwargs):
+    return CloudResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
 
+def CloudResNet50(**kwargs):
+    return CloudResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
 
-def ResNet152():
-    return ResNet(Bottleneck, [3, 8, 36, 3])
+def CloudResNet101(**kwargs):
+    return CloudResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
 
+def CloudResNet152(**kwargs):
+    return CloudResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
+
+def EdgeResNet18(**kwargs):
+    return EdgeResNet(BasicBlock, [2, 2, 2, 2], **kwargs)
+
+def EdgeResNet34(**kwargs):
+    return EdgeResNet(BasicBlock, [3, 4, 6, 3], **kwargs)
+
+def EdgeResNet50(**kwargs):
+    return EdgeResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
+
+def EdgeResNet101(**kwargs):
+    return EdgeResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
+
+def EdgeResNet152(**kwargs):
+    return EdgeResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
 
 def test():
-    net = ResNet18()
-    y = net(torch.randn(1, 3, 32, 32))
-    print(y.size())
+    concat_layer = 2
+    cloud_model = CloudResNet34(depth=concat_layer, num_classes=10)
+    edge_model = EdgeResNet18(cloud_model=cloud_model, depth=concat_layer, num_classes=100)
+    x = torch.randn(1, 3, 32, 32)
+    y = torch.randn(1, 3, 32, 32)
 
-# test()
+    out = edge_model(x, y)
+    print(out.shape)
+    
+if __name__ == '__main__':
+    test()
