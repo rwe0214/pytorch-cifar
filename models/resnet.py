@@ -113,7 +113,7 @@ class EdgeResNet(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layers = []
+        self.layers = nn.ModuleList()
         self.layers.append(self._make_layer(block, 64, num_blocks[0], stride=1))
         self.layers.append(self._make_layer(block, 128, num_blocks[1], stride=2))
         self.layers.append(self._make_layer(block, 256, num_blocks[2], stride=2))
@@ -151,7 +151,7 @@ class CloudResNet(nn.Module):
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
-        self.layers = []
+        self.layers = nn.ModuleList()
         self.layers.append(self._make_layer(block, 64, num_blocks[0], stride=1))
         self.layers.append(self._make_layer(block, 128, num_blocks[1], stride=2))
         self.layers.append(self._make_layer(block, 256, num_blocks[2], stride=2))
