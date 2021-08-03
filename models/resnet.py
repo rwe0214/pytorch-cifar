@@ -122,6 +122,11 @@ class EdgeResNet(nn.Module):
         self.depth = depth
         self.cloud_model = cloud_model
         self.concat_layer = ConcatLayer(2 ** (depth + 6))
+        
+        planes = [64, 128, 256, 512]
+        self.resolute = cloud_model.layers[depth-1][-1].expansion >  1
+        self.expansion = cloud_model.layers[depth-1][-1].expansion if self.resolute else None
+        self.resolution_conv = nn.Conv2d(planes[depth-1] * self.expansion, planes[depth-1], kernel_size = 1, bias = False) if self.resolute else None
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -134,6 +139,8 @@ class EdgeResNet(nn.Module):
     def forward(self, x, y):
         out = F.relu(self.bn1(self.conv1(x)))
         cloud_out = self.cloud_model(y)
+        if self.resolute:
+            cloud_out = self.resolution_conv(cloud_out)
         for depth, layer in enumerate(self.layers):
             if self.depth == depth:
                 out = self.concat_layer(out, cloud_out)
@@ -225,13 +232,14 @@ def EdgeResNet152(**kwargs):
     return EdgeResNet(Bottleneck, [3, 8, 36, 3], **kwargs)
 
 def test():
-    concat_layer = 2
-    cloud_model = CloudResNet34(depth=concat_layer, num_classes=10)
+    concat_layer = 3
+    cloud_model = CloudResNet101(depth=concat_layer, num_classes=10)
     edge_model = EdgeResNet18(cloud_model=cloud_model, depth=concat_layer, num_classes=100)
     x = torch.randn(1, 3, 32, 32)
     y = torch.randn(1, 3, 32, 32)
 
     out = edge_model(x, y)
+    print(edge_model)
     print(out.shape)
     
 if __name__ == '__main__':
