@@ -12,7 +12,7 @@ import os
 import argparse
 
 from models import *
-from utils import progress_bar, partial_load, different_lr, aggregate_models, distribute_models
+from utils import progress_bar, partial_load, different_lr, aggregate_models, distribute_models, freeze_keyword, load_keyword
 from tensorboard_logger import configure, log_value
 
 torch.manual_seed(563)
@@ -22,14 +22,15 @@ parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--resume', '-r', action='store_true',
                     help='resume from checkpoint')
 parser.add_argument('--num_clients', default=1, type=int)
+parser.add_argument('--cloud_arch', type=str, default='resnet34', help='pretrained cloud model backbone type')
 parser.add_argument('--pretrain', type=str, help='pretrained cifar10 model')
 parser.add_argument('--pretrain_layer', default=-1, type=int)
 parser.add_argument('--pretrain_lr_multiplier', default=1e-3, type=float)
-parser.add_argument('--log', type=str)
+parser.add_argument('--log', action='store_true')
 args = parser.parse_args()
 
 if args.log is not None:
-    path = f'logs/{args.log}'
+    path = f'logs/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}'
     if not os.path.exists(path):
         os.makedirs(path)
 
@@ -69,29 +70,42 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer',
 
 # Model
 print('==> Building model..')
-# net = VGG('VGG19')
-nets = [ResNet18(num_classes=100).to(device) for _ in range(args.num_clients)]
-# net = PreActResNet18()
-# net = GoogLeNet()
-# net = DenseNet121()
-# net = ResNeXt29_2x64d()
-# net = MobileNet()
-# net = MobileNetV2()
-# net = DPN92()
-# net = ShuffleNetG2()
-# net = SENet18()
-# net = ShuffleNetV2(1)
-# net = EfficientNetB0()
-# net = RegNetX_200MF()
-# net = SimpleDLA()
-net_init = ResNet18(num_classes=100)
+resnet_archs = {
+        'cloud': {
+            'resnet18': CloudResNet18,
+            'resnet34': CloudResNet34,
+            'resnet50': CloudResNet50
+            },
+        'edge': {
+            'resnet18': EdgeResNet18,
+            'resnet34': EdgeResNet34,
+            'resnet50': EdgeResNet50
+            }
+        }
+
+cloud_net = resnet_archs['cloud'][args.cloud_arch](depth = args.pretrain_layer, num_classes = 10).to(device)
+
+# load model and freeze the cloud model's parameters
+edge_arch = 'resnet18'
+nets = [freeze_keyword(resnet_archs['edge'][edge_arch](cloud_model = cloud_net,
+                                                        depth = args.pretrain_layer,
+                                                        num_classes = 100
+                                                        ),
+                        keyword = 'cloud_model'
+                        ).to(device) for _ in range(args.num_clients)]
+net_init = resnet_archs['edge'][edge_arch](cloud_model = cloud_net,
+                                            depth = args.pretrain_layer,
+                                            num_classes = 100
+                                            )
+
 if device == 'cuda':
     nets = [torch.nn.DataParallel(net) for net in nets]
     net_init = torch.nn.DataParallel(net_init)
     cudnn.benchmark = True
 
 if args.pretrain:
-    partial_load(net_init, torch.load(args.pretrain)['net'], args.pretrain_layer)
+    # load cloud_model only
+    load_keyword(net_init, torch.load(args.pretrain)['net'], keyword = 'cloud_model')
 
 distribute_models(net_init, nets)
 
@@ -105,13 +119,13 @@ if args.resume:
     start_epoch = checkpoint['epoch']
 
 criterion = nn.CrossEntropyLoss()
-optimizers = [optim.SGD(different_lr(net, args.lr * args.pretrain_lr_multiplier, args.pretrain_layer),
+# train the parameters only in edge model
+optimizers = [optim.SGD(filter(lambda p: p.requires_grad, net.parameters()),
                         lr=args.lr,
-                        momentum=0.9, weight_decay=5e-4) for net in nets]
+                        momentum=0.9,
+                        weight_decay=5e-4) for net in nets]
 schedulers = [torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
               for optimizer in optimizers]
-print(optimizers[0])
-
 
 # Training
 def train(epoch, net, trainloader, optimizer):
@@ -121,9 +135,10 @@ def train(epoch, net, trainloader, optimizer):
     correct = 0
     total = 0
     for batch_idx, (inputs, targets) in enumerate(trainloader):
-        inputs, targets = inputs.to(device), targets.to(device)
+        # TODO: Add differential privacy
+        inputs, dp_inputs, targets = inputs.to(device), inputs.to(device), targets.to(device)
         optimizer.zero_grad()
-        outputs = net(inputs)
+        outputs = net(inputs, dp_inputs)
         loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
@@ -147,8 +162,9 @@ def test(epoch, net):
     total = 0
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(testloader):
-            inputs, targets = inputs.to(device), targets.to(device)
-            outputs = net(inputs)
+            # TODO: Add differential privacy
+            inputs, dp_inputs, targets = inputs.to(device), inputs.to(device), targets.to(device)
+            outputs = net(inputs, dp_inputs)
             loss = criterion(outputs, targets)
 
             test_loss += loss.item()
@@ -173,7 +189,8 @@ def test(epoch, net):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.pth')
+        ckpt_path = f'./checkpoint/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}.pth'
+        torch.save(state, ckpt_path)
         best_acc = acc
 
 
@@ -191,3 +208,4 @@ for epoch in range(start_epoch, start_epoch+200):
     test(epoch, nets[0])
     for scheduler in schedulers:
         scheduler.step()
+
