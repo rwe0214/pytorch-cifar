@@ -128,7 +128,7 @@ def load_keyword(net, state_dict, keyword='cloud_model'):
     model_dict = net.state_dict()
     for name, weight in state_dict.items():
         name = name.replace('module', 'module.'+keyword)
-        model_dict[name]
+        model_dict[name] = weight
     net.load_state_dict(model_dict)
 
 def partial_load(net, state_dict, num_layer=-1):
