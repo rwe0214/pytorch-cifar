@@ -124,6 +124,13 @@ def format_time(seconds):
         f = '0ms'
     return f
 
+def load_keyword(net, state_dict, keyword='cloud_model'):
+    model_dict = net.state_dict()
+    for name, weight in state_dict.items():
+        name = name.replace('module', 'module.'+keyword)
+        model_dict[name]
+    net.load_state_dict(model_dict)
+
 def partial_load(net, state_dict, num_layer=-1):
     if num_layer == -1:
         return
@@ -162,12 +169,26 @@ def freeze_bn(net, num_layer=-1):
 
     return net
 
+def freeze_keyword(net, keyword='cloud_model'):
+    for name, parameter in net.named_parameters():
+        if keyword not in name:
+            continue
+        parameter.requires_grad = False
+    for name, module in net.named_modules():
+        if keyword not in name:
+            continue
+        if isinstance(module, nn.BatchNorm2d):
+            module.eval()
+    return net
+
+
+
 def different_lr(net, lr, num_layer=-1):
     if num_layer == -1:
         return net.parameters()
 
     params = []
-    excluded_layer_name = f'layer{num_layer+1}'
+    excluded_layer_name = f'layers.{num_layer}'
     excluded = False
     for name, parameter in net.named_parameters():
         if excluded_layer_name in name:
