@@ -62,12 +62,18 @@ class Bottleneck(nn.Module):
         return out
     
 class ConcatLayer(nn.Module):
-    def __init__(self, in_channels):
+    def __init__(self, in_channels, out_channels):
         super(ConcatLayer, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, in_channels // 2, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(in_channels // 2)
-    
+        self.conv1 = nn.Conv2d(in_channels[1] * 2, out_channels, kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(out_channels)
+        self.resolute = in_channels[0] != in_channels[1]
+        if self.resolute:
+            self.conv2 = nn.Conv2d(in_channels[0], in_channels[1], kernel_size=1, bias=False)
+            self.bn2 = nn.BatchNorm2d(in_channels[1])
+
     def forward(self, x, y):
+        if self.resolute:
+            y = F.relu(self.bn2(self.conv2(y)))
         return F.relu(self.bn1(self.conv1(torch.cat((x, y), 1))))
     
 class ResNet(nn.Module):
@@ -121,12 +127,10 @@ class EdgeResNet(nn.Module):
         self.linear = nn.Linear(512*block.expansion, num_classes)
         self.depth = depth
         self.cloud_model = cloud_model
-        self.concat_layer = ConcatLayer(2 ** (depth + 6))
-        
-        planes = [64, 128, 256, 512]
-        self.resolute = cloud_model.layers[depth-1][-1].expansion >  1
-        self.expansion = cloud_model.layers[depth-1][-1].expansion if self.resolute else None
-        self.resolution_conv = nn.Conv2d(planes[depth-1] * self.expansion, planes[depth-1], kernel_size = 1, bias = False) if self.resolute else None
+
+        self.expansion = cloud_model.layers[depth-1][-1].expansion.bit_length()-1
+        self.concat_channels = [2 ** (depth + 5 + self.expansion), 2 ** (depth + 5)]
+        self.concat_layer = ConcatLayer(self.concat_channels, self.concat_channels[1])
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -139,8 +143,6 @@ class EdgeResNet(nn.Module):
     def forward(self, x, y):
         out = F.relu(self.bn1(self.conv1(x)))
         cloud_out = self.cloud_model(y)
-        if self.resolute:
-            cloud_out = self.resolution_conv(cloud_out)
         for depth, layer in enumerate(self.layers):
             if self.depth == depth:
                 out = self.concat_layer(out, cloud_out)
@@ -239,7 +241,7 @@ def test():
     y = torch.randn(1, 3, 32, 32)
 
     out = edge_model(x, y)
-    print(edge_model)
+    print(edge_model.concat_layer)
     print(out.shape)
     
 if __name__ == '__main__':
