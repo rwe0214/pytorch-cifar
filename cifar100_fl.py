@@ -74,7 +74,9 @@ resnet_archs = {
         'cloud': {
             'resnet18': CloudResNet18,
             'resnet34': CloudResNet34,
-            'resnet50': CloudResNet50
+            'resnet50': CloudResNet50,
+            'resnet506': CloudResNet50_6,
+            'densenet121': CloudDenseNet121
             },
         'edge': {
             'resnet18': EdgeResNet18,
