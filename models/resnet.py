@@ -128,7 +128,10 @@ class EdgeResNet(nn.Module):
         self.depth = depth
         self.cloud_model = cloud_model
 
-        self.expansion = cloud_model.layers[depth-1][-1].expansion.bit_length()-1
+        self.expansion = cloud_model.layers[depth-1][-1].expansion.bit_length()-1 if cloud_model.backbone == 'ResNet' else 2
+        if cloud_model.backbone == 'DenseNet':
+            # only tested on DenseNet121
+            assert(self.expansion == 2)
         self.concat_channels = [2 ** (depth + 5 + self.expansion), 2 ** (depth + 5)]
         self.concat_layer = ConcatLayer(self.concat_channels, self.concat_channels[1])
 
@@ -167,6 +170,7 @@ class CloudResNet(nn.Module):
         self.layers.append(self._make_layer(block, 512, num_blocks[3], stride=2))
         self.linear = nn.Linear(512*block.expansion, num_classes)
         self.depth = depth
+        self.backbone = 'ResNet'
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -197,6 +201,9 @@ def ResNet34(**kwargs):
 def ResNet50(**kwargs):
     return ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
 
+def ResNet50_6(**kwargs):
+    return ResNet(Bottleneck, [6, 3, 5, 2], **kwargs)
+
 def ResNet101(**kwargs):
     return ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
 
@@ -211,6 +218,9 @@ def CloudResNet34(**kwargs):
 
 def CloudResNet50(**kwargs):
     return CloudResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
+
+def CloudResNet50_6(**kwargs):
+    return CloudResNet(Bottleneck, [6, 3, 5, 2], **kwargs)
 
 def CloudResNet101(**kwargs):
     return CloudResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
