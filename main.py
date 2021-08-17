@@ -17,7 +17,7 @@ from utils import progress_bar
 
 parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Training')
 parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
-parser.add_argument('--resume', '-r', action='store_true',
+parser.add_argument('--resume', '-r', type=str,
                     help='resume from checkpoint')
 args = parser.parse_args()
 
@@ -55,7 +55,7 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer',
 # Model
 print('==> Building model..')
 # net = VGG('VGG19')
-# net = ResNet18()
+net = ResNet50()
 # net = PreActResNet18()
 # net = GoogLeNet()
 # net = DenseNet121()
@@ -68,17 +68,17 @@ print('==> Building model..')
 # net = ShuffleNetV2(1)
 # net = EfficientNetB0()
 # net = RegNetX_200MF()
-net = SimpleDLA()
+# net = SimpleDLA()
 net = net.to(device)
 if device == 'cuda':
     net = torch.nn.DataParallel(net)
     cudnn.benchmark = True
 
-if args.resume:
+if args.resume is not None:
     # Load checkpoint.
     print('==> Resuming from checkpoint..')
     assert os.path.isdir('checkpoint'), 'Error: no checkpoint directory found!'
-    checkpoint = torch.load('./checkpoint/ckpt.pth')
+    checkpoint = torch.load(f'./{args.resume}')
     net.load_state_dict(checkpoint['net'])
     best_acc = checkpoint['acc']
     start_epoch = checkpoint['epoch']
@@ -134,6 +134,7 @@ def test(epoch):
                          % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
 
     # Save checkpoint.
+    '''
     acc = 100.*correct/total
     if acc > best_acc:
         print('Saving..')
@@ -146,9 +147,10 @@ def test(epoch):
             os.mkdir('checkpoint')
         torch.save(state, './checkpoint/ckpt.pth')
         best_acc = acc
-
+    '''
 
 for epoch in range(start_epoch, start_epoch+200):
-    train(epoch)
+    #train(epoch)
     test(epoch)
-    scheduler.step()
+    #scheduler.step()
+    break

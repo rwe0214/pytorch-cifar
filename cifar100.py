@@ -51,12 +51,12 @@ transform_test = transforms.Compose([
     transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
 ])
 
-trainset = torchvision.datasets.CIFAR100(
+trainset = torchvision.datasets.CIFAR10(
     root='./data', train=True, download=True, transform=transform_train)
 trainloader = torch.utils.data.DataLoader(
     trainset, batch_size=128, shuffle=True, num_workers=4)
 
-testset = torchvision.datasets.CIFAR100(
+testset = torchvision.datasets.CIFAR10(
     root='./data', train=False, download=True, transform=transform_test)
 testloader = torch.utils.data.DataLoader(
     testset, batch_size=100, shuffle=False, num_workers=4)
@@ -67,7 +67,7 @@ classes = ('plane', 'car', 'bird', 'cat', 'deer',
 # Model
 print('==> Building model..')
 # net = VGG('VGG19')
-net = ResNet18(num_classes=100)
+net = ResNet50_6(num_classes=10)
 # net = PreActResNet18()
 # net = GoogLeNet()
 # net = DenseNet121()
@@ -103,6 +103,7 @@ optimizer = optim.SGD(different_lr(net, args.lr * 1, args.pretrain_layer),
                       lr=args.lr,
                       momentum=0.9, weight_decay=5e-4)
 scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
+print(net)
 print([p[0] for p in filter(lambda p: p[1].requires_grad, list(net.named_parameters()))])
 print(optimizer)
 
@@ -168,7 +169,7 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, './checkpoint/ckpt.pth')
+        torch.save(state, f'./checkpoint/{args.log}.pth')
         best_acc = acc
 
 
