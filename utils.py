@@ -217,3 +217,28 @@ def distribute_models(avg_model, models):
     for m in models:
         for (p_avg, p) in zip(avg_model.parameters(), m.parameters()):
             p.data = p_avg.to(p.device)
+
+import cv2
+import numpy as np
+import torch
+class DifferentialPrivacy:
+    def __init__(self, dataset, sensitivity = None):
+        if sensitivity is None:
+            total_img = np.zeros(np.array(dataset[0][0]).shape)
+            imgs = []
+            for img, _ in dataset:
+                img = np.array(img).astype(np.double)
+                total_img += img
+                imgs.append(img)
+            average_img = total_img / len(imgs)
+            delta = [cv2.norm(average_img-img, normType=cv2.NORM_L1) for img in imgs]
+            self.sensitivity = max(delta)/(len(imgs)-1)
+        else:
+            self.sensitivity = sensitivity
+
+    def add_noise(self, img, e):
+        # assume img is a tensor
+        noise = np.random.laplace(0, self.sensitivity/e, img.shape)        
+        dp_img = (img + torch.from_numpy(noise))
+#         dp_img = np.clip(dp_img, 0, 1)
+        return dp_img            

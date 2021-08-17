@@ -123,8 +123,8 @@ class CloudDenseNet(nn.Module):
 def CloudDenseNet121(**kwargs):
     return CloudDenseNet(Bottleneck, [6,12,24,16], growth_rate=32, **kwargs)
 
-def DenseNet121():
-    return DenseNet(Bottleneck, [6,12,24,16], growth_rate=32)
+def DenseNet121(**kwargs):
+    return DenseNet(Bottleneck, [6,12,24,16], growth_rate=32, **kwargs)
 
 def DenseNet169():
     return DenseNet(Bottleneck, [6,12,32,32], growth_rate=32)
