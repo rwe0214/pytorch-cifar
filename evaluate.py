@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Evaluating')
 parser.add_argument('--model_arch', type=str, default='resnet34', help=' model backbone type')
 parser.add_argument('--model_path', type=str, help='the path of model\'s weight')
 parser.add_argument('--dp', action='store_true', help='using differential privacy')
-parser.add_argument('--epsilon', default=8e-1, type=float)
+parser.add_argument('--epsilon', nargs='+', default=[1, 2, 4, 8, float('inf')])
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -50,7 +50,7 @@ testloader = torch.utils.data.DataLoader(
     testset, batch_size=100, shuffle=False, num_workers=4)
 
 if args.dp:
-    privacy_agent = DP(trainset, sensitivity = None)
+    privacy_agent = DP(testset, sensitivity = None)
 else:
     privacy_agent = None
 
@@ -77,23 +77,35 @@ criterion = nn.CrossEntropyLoss()
 
 # Evaluate
 print('==> Evaluating model..')
+
+
+epsilons = [float('inf')] if not args.dp else args.epsilon
+
 net.eval()
-test_loss = 0
-correct = 0
-total = 0
-with torch.no_grad():
-    for batch_idx, (inputs, targets) in enumerate(testloader):
-        if args.dp:
-            inputs = privacy_agent.add_noise(inputs, args.epsilon).float()
-        inputs, targets = inputs.to(device), targets.to(device)
+acc_list = []
+for e in epsilons:
+    test_loss = 0
+    correct = 0
+    total = 0
+    with torch.no_grad():
+        for batch_idx, (inputs, targets) in enumerate(testloader):
+            if e != float('inf'):
+                inputs = privacy_agent.add_noise(inputs, e).float()
+            inputs, targets = inputs.to(device), targets.to(device)
 
-        outputs = net(inputs)
-        loss = criterion(outputs, targets)
+            outputs = net(inputs)
+            loss = criterion(outputs, targets)
 
-        test_loss += loss.item()
-        _, predicted = outputs.max(1)
-        total += targets.size(0)
-        correct += predicted.eq(targets).sum().item()
+            test_loss += loss.item()
+            _, predicted = outputs.max(1)
+            total += targets.size(0)
+            correct += predicted.eq(targets).sum().item()
 
-        progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
-                     % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+            progress_bar(batch_idx, len(testloader), 'Loss: %.3f | Acc: %.3f%% (%d/%d)'
+                         % (test_loss/(batch_idx+1), 100.*correct/total, correct, total))
+    acc_list.append(100.*correct/total)
+
+print('==> Evaluating result..')
+print('Epsilon,Acc')
+for e, acc in zip(epsilons, acc_list):
+    print(f'{e},{acc}')
