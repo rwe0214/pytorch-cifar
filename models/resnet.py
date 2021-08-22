@@ -79,7 +79,7 @@ class ConcatLayer(nn.Module):
         super(ConcatLayer, self).__init__()
         # self.use_approx_relu = use_approx_relu
         self.relu = activate_func
-        
+
         self.conv1 = nn.Conv2d(in_channels[1] * 2, out_channels, kernel_size=1, bias=False)
         self.bn1 = nn.BatchNorm2d(out_channels)
         self.resolute = in_channels[0] != in_channels[1]
@@ -91,6 +91,7 @@ class ConcatLayer(nn.Module):
         if self.resolute:
             y = self.relu(self.bn2(self.conv2(y)))
         return self.relu(self.bn1(self.conv1(torch.cat((x, y), 1))))
+
     
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, num_classes=10, use_approx_relu=False, degree=4):
@@ -103,6 +104,7 @@ class ResNet(nn.Module):
                                stride=1, padding=1, bias=False)
         self.bn1 = nn.BatchNorm2d(64)
         self.layers = nn.ModuleList()
+
         self.layers.append(self._make_layer(block, 64, num_blocks[0], stride=1, activate_func=self.relu))
         self.layers.append(self._make_layer(block, 128, num_blocks[1], stride=2, activate_func=self.relu))
         self.layers.append(self._make_layer(block, 256, num_blocks[2], stride=2, activate_func=self.relu))
@@ -208,6 +210,7 @@ class CloudResNet(nn.Module):
 
     def forward(self, x):
         out = self.relu(self.bn1(self.conv1(x)))
+
         for depth, layer in enumerate(self.layers):
             if self.depth == depth:
                 return out
@@ -287,6 +290,7 @@ def test():
     #out = edge_model(x, y)
     #print(edge_model.concat_layer)
     #print(out.shape)
+
     
 if __name__ == '__main__':
     test()
