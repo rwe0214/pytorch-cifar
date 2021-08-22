@@ -157,7 +157,7 @@ def test(epoch):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        torch.save(state, f'./checkpoint/{args.model}_approx_relu_cifar10.pth')
+        torch.save(state, f'./checkpoint/{args.arch}_approx_relu_cifar10.pth')
         best_acc = acc
 
 

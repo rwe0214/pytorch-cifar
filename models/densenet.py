@@ -79,7 +79,7 @@ class DenseNet(nn.Module):
         for depth, (trans, dense) in enumerate(zip_longest(self.transes, self.denses)):
             out = trans(dense(out)) if trans is not None else dense(out)
 
-        out = F.avg_pool2d(relu(self.bn(out)), 4)
+        out = F.avg_pool2d(self.relu(self.bn(out)), 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out
@@ -127,7 +127,7 @@ class CloudDenseNet(nn.Module):
                 return dense(out)
             out = trans(dense(out)) if trans is not None else dense(out)
 
-        out = F.avg_pool2d(relu(self.bn(out), self.use_approx_relu), 4)
+        out = F.avg_pool2d(self.relu(self.bn(out)), 4)
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out
@@ -157,7 +157,7 @@ def test():
     y = net(x)
     y1 = net1(x)
     print(y.shape)
-    print(torch.subtract(y1, y).mean())
+    print(torch.sub(y1, y).mean())
 
 if __name__ == '__main__':
     test()
