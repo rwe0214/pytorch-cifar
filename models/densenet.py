@@ -41,10 +41,10 @@ class Transition(nn.Module):
 
 
 class DenseNet(nn.Module):
-    def __init__(self, block, nblocks, growth_rate=12, reduction=0.5, num_classes=10, use_approx_relu=False):
+    def __init__(self, block, nblocks, growth_rate=12, reduction=0.5, num_classes=10, use_approx_relu=False, degree=4):
         super(DenseNet, self).__init__()
         # self.use_approx_relu = use_approx_relu
-        self.relu = relu(use_approx_relu)
+        self.relu = relu(use_approx_relu, degree=degree)
         
         self.growth_rate = growth_rate
 
@@ -85,10 +85,10 @@ class DenseNet(nn.Module):
         return out
 
 class CloudDenseNet(nn.Module):
-    def __init__(self, block, nblocks, depth, growth_rate=12, reduction=0.5, num_classes=10, use_approx_relu=False):
+    def __init__(self, block, nblocks, depth, growth_rate=12, reduction=0.5, num_classes=10, use_approx_relu=False, degree=4):
         super(CloudDenseNet, self).__init__()
         # self.use_approx_relu = use_approx_relu
-        self.relu = relu(use_approx_relu)
+        self.relu = relu(use_approx_relu, degree=degree)
         
         self.growth_rate = growth_rate
 

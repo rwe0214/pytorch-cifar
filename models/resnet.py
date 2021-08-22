@@ -93,10 +93,10 @@ class ConcatLayer(nn.Module):
         return self.relu(self.bn1(self.conv1(torch.cat((x, y), 1))))
     
 class ResNet(nn.Module):
-    def __init__(self, block, num_blocks, num_classes=10, use_approx_relu=False):
+    def __init__(self, block, num_blocks, num_classes=10, use_approx_relu=False, degree=4):
         super(ResNet, self).__init__()
         # self.use_approx_relu = use_approx_relu
-        self.relu = relu(use_approx_relu)
+        self.relu = relu(use_approx_relu, degree=degree)
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
@@ -131,13 +131,13 @@ class ResNet(nn.Module):
         return out
     
 class EdgeResNet(nn.Module):
-    def __init__(self, block, num_blocks, cloud_model, depth, num_classes=10, use_approx_relu=False):
+    def __init__(self, block, num_blocks, cloud_model, depth, num_classes=10, use_approx_relu=False, degree=4):
         '''
             depth: depth of the concat layer
         '''
         super(EdgeResNet, self).__init__()
         # self.use_approx_relu = use_approx_relu
-        self.relu = relu(use_approx_relu)
+        self.relu = relu(use_approx_relu, degree=degree)
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,
@@ -180,10 +180,10 @@ class EdgeResNet(nn.Module):
         return out
     
 class CloudResNet(nn.Module):
-    def __init__(self, block, num_blocks, depth, num_classes=10, use_approx_relu=False):
+    def __init__(self, block, num_blocks, depth, num_classes=10, use_approx_relu=False, degree=4):
         super(CloudResNet, self).__init__()
         # self.use_approx_relu = use_approx_relu
-        self.relu = relu(use_approx_relu)
+        self.relu = relu(use_approx_relu, degree=degree)
         self.in_planes = 64
 
         self.conv1 = nn.Conv2d(3, 64, kernel_size=3,

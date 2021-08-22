@@ -22,6 +22,7 @@ parser.add_argument('--model_arch', type=str, default='resnet34', help=' model b
 parser.add_argument('--model_path', type=str, help='the path of model\'s weight')
 parser.add_argument('--dp', action='store_true', help='using differential privacy')
 parser.add_argument('--use_approx_relu', action='store_true', help='using approximate ReLU')
+parser.add_argument('--approx_degree', type=int, default=4, help='approximate polynomial degree')
 parser.add_argument('--epsilon', nargs='+', default=[1, 2, 4, 8, float('inf')])
 args = parser.parse_args()
 
@@ -62,7 +63,8 @@ resnet_archs = {
         'densenet121': DenseNet121        
     }
 
-net = resnet_archs[args.model_arch](num_classes = 10, use_approx_relu=args.use_approx_relu).to(device)
+net = resnet_archs[args.model_arch](num_classes = 10, use_approx_relu=args.use_approx_relu, degree=args.approx_degree).to(device)
+print(net.relu.__name__)
 
 if device == 'cuda':
     net = torch.nn.DataParallel(net)

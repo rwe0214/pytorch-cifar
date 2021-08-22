@@ -21,7 +21,8 @@ parser.add_argument('--lr', default=0.1, type=float, help='learning rate')
 parser.add_argument('--model', type=str, help='pretrained cifar10 model')
 parser.add_argument('--arch', default='resnet34', type=str, help='model architecture')
 parser.add_argument('--fine_tune', action='store_true', help='fine tune from [MODEL]')
-parser.add_argument('--use_approx_relu', action='store_true')
+parser.add_argument('--use_approx_relu', action='store_true', help='use approximate relu')
+parser.add_argument('--approx_degree', type=int, default=4, help='approximate polynomial degree')
 parser.add_argument('--log', action='store_true')
 args = parser.parse_args()
 
@@ -74,7 +75,8 @@ model_arch = {
         }
 
 print('==> Building approx-relu model..')
-net = model_arch[args.arch](num_classes=10, use_approx_relu=args.use_approx_relu)
+net = model_arch[args.arch](num_classes=10, use_approx_relu=args.use_approx_relu, degree=args.approx_degree)
+print(net.relu.__name__)
 net = net.to(device)
 if device == 'cuda':
     net = torch.nn.DataParallel(net)
