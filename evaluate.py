@@ -21,6 +21,7 @@ parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Evaluating')
 parser.add_argument('--model_arch', type=str, default='resnet34', help=' model backbone type')
 parser.add_argument('--model_path', type=str, help='the path of model\'s weight')
 parser.add_argument('--dp', action='store_true', help='using differential privacy')
+parser.add_argument('--use_approx_relu', action='store_true', help='using approximate ReLU')
 parser.add_argument('--epsilon', nargs='+', default=[1, 2, 4, 8, float('inf')])
 args = parser.parse_args()
 
@@ -40,9 +41,6 @@ transform_test = transforms.Compose([
     transforms.ToTensor(),
     transforms.Normalize(mean, std),
 ])
-
-trainset = torchvision.datasets.CIFAR10(
-    root='./data', train=True, download=True, transform=transform_train)
 
 testset = torchvision.datasets.CIFAR10(
     root='./data', train=False, download=True, transform=transform_test)
@@ -64,7 +62,7 @@ resnet_archs = {
         'densenet121': DenseNet121        
     }
 
-net = resnet_archs[args.model_arch](num_classes = 10).to(device)
+net = resnet_archs[args.model_arch](num_classes = 10, use_approx_relu=args.use_approx_relu).to(device)
 
 if device == 'cuda':
     net = torch.nn.DataParallel(net)
