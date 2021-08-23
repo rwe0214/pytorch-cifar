@@ -29,6 +29,7 @@ parser.add_argument('--pretrain_layer', default=-1, type=int)
 parser.add_argument('--pretrain_lr_multiplier', default=1e-3, type=float)
 parser.add_argument('--dp', action='store_true', help='using differential privacy')
 parser.add_argument('--epsilon', default=8e-1, type=float)
+
 parser.add_argument('--log', action='store_true')
 args = parser.parse_args()
 
@@ -158,6 +159,7 @@ def train(epoch, net, trainloader, optimizer, privacy_agent):
                                             targets.to(device)
         else:
             inputs, dp_inputs, targets = inputs.to(device), inputs.to(device), targets.to(device)
+
         optimizer.zero_grad()
         outputs = net(inputs, dp_inputs)
         loss = criterion(outputs, targets)
@@ -183,13 +185,13 @@ def test(epoch, net, privacy_agent):
     total = 0
     with torch.no_grad():
         for batch_idx, (inputs, targets) in enumerate(testloader):
-            # TODO: Add differential privacy
             if args.dp:
                 inputs, dp_inputs, targets = inputs.to(device),  \
                                                 privacy_agent.add_noise(inputs, args.epsilon).float().to(device), \
                                                 targets.to(device)
             else:
                 inputs, dp_inputs, targets = inputs.to(device), inputs.to(device), targets.to(device)
+
             outputs = net(inputs, dp_inputs)
             loss = criterion(outputs, targets)
 
@@ -219,6 +221,7 @@ def test(epoch, net, privacy_agent):
             ckpt_path = f'./checkpoint/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}_e_{args.epsilon:.1f}.pth'
         else:
             ckpt_path = f'./checkpoint/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}.pth'
+
         torch.save(state, ckpt_path)
         best_acc = acc
 
