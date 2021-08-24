@@ -21,7 +21,7 @@ parser = argparse.ArgumentParser(description='PyTorch CIFAR10 Evaluating')
 parser.add_argument('--model_arch', type=str, default='resnet34', help=' model backbone type')
 parser.add_argument('--model_path', type=str, help='the path of model\'s weight')
 parser.add_argument('--dp', action='store_true', help='using differential privacy')
-parser.add_argument('--epsilon', nargs='+', default=[1, 2, 4, 8, float('inf')])
+parser.add_argument('--epsilon', nargs='+', default=[1, 2, 4, 8, float('inf')], type=float)
 args = parser.parse_args()
 
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
