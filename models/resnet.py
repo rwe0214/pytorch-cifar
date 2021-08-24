@@ -154,7 +154,7 @@ class EdgeResNet(nn.Module):
         out = out.view(out.size(0), -1)
         out = self.linear(out)
         return out
-    
+
 class CloudResNet(nn.Module):
     def __init__(self, block, num_blocks, depth, num_classes=10):
         super(CloudResNet, self).__init__()
@@ -249,7 +249,6 @@ def test():
     edge_model = EdgeResNet18(cloud_model=cloud_model, depth=concat_layer, num_classes=100)
     x = torch.randn(1, 3, 32, 32)
     y = torch.randn(1, 3, 32, 32)
-
     out = edge_model(x, y)
     print(edge_model.concat_layer)
     print(out.shape)
