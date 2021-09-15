@@ -109,7 +109,7 @@ class ResNet(nn.Module):
         return out
     
 class EdgeResNet(nn.Module):
-    def __init__(self, block, num_blocks, cloud_model, depth, num_classes=10):
+    def __init__(self, block, num_blocks, cloud_model, depth, num_classes=10, use_ezpc=False):
         '''
             depth: depth of the concat layer
         '''
@@ -134,6 +134,7 @@ class EdgeResNet(nn.Module):
             assert(self.expansion == 2)
         self.concat_channels = [2 ** (depth + 5 + self.expansion), 2 ** (depth + 5)]
         self.concat_layer = ConcatLayer(self.concat_channels, self.concat_channels[1])
+        self.use_ezpc = use_ezpc
 
     def _make_layer(self, block, planes, num_blocks, stride):
         strides = [stride] + [1]*(num_blocks-1)
@@ -145,7 +146,7 @@ class EdgeResNet(nn.Module):
 
     def forward(self, x, y):
         out = F.relu(self.bn1(self.conv1(x)))
-        cloud_out = self.cloud_model(y)
+        cloud_out = self.cloud_model(y) if not self.use_ezpc else y
         for depth, layer in enumerate(self.layers):
             if self.depth == depth:
                 out = self.concat_layer(out, cloud_out)

@@ -13,8 +13,9 @@ import argparse
 
 from models import *
 from utils import progress_bar, partial_load, different_lr, aggregate_models, distribute_models, freeze_keyword, load_keyword
-from utils import DifferentialPrivacy as DP
+from utils import CIFAR100wFmap
 from tensorboard_logger import configure, log_value
+from CachedTransforms import *
 
 torch.manual_seed(563)
 
@@ -27,15 +28,15 @@ parser.add_argument('--cloud_arch', type=str, default='resnet34', help='pretrain
 parser.add_argument('--pretrain', type=str, help='pretrained cifar10 model')
 parser.add_argument('--pretrain_layer', default=-1, type=int)
 parser.add_argument('--pretrain_lr_multiplier', default=1e-3, type=float)
-parser.add_argument('--dp', action='store_true', help='using differential privacy')
+parser.add_argument('--ezpc', action='store_true', help='using EzPC protocal')
 parser.add_argument('--epsilon', default=8e-1, type=float)
 
 parser.add_argument('--log', action='store_true')
 args = parser.parse_args()
 
-if args.log is not None:
-    if args.dp:
-        path = f'logs/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}_e_{args.epsilon:.1f}'
+if args.log:
+    if args.ezpc:
+        path = f'logs/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}_ezpc'
     else:        
         path = f'logs/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}'
     if not os.path.exists(path):
@@ -52,8 +53,8 @@ print('==> Preparing data..')
 mean = (0.4914, 0.4822, 0.4465)
 std = (0.2023, 0.1994, 0.2010)
 transform_train = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(),
+    RandomHorizontalFlip(),
+    RandomCrop(32, padding=4),
     transforms.ToTensor(),
     transforms.Normalize(mean, std),
 ])
@@ -63,23 +64,37 @@ transform_test = transforms.Compose([
     transforms.Normalize(mean, std),
 ])
 
-trainset = torchvision.datasets.CIFAR100(
-    root='./data', train=True, download=True, transform=transform_train)
+
+trainset = torchvision.datasets.CIFAR100(root='./data', 
+                                         train=True, 
+                                         download=True, 
+                                         transform=transform_train) if not args.ezpc else \
+           CIFAR100wFmap(cifar100_root='./data', 
+                         transform=transform_train, 
+                         train=True,
+                         fmap_root='/mnt/disk1/CIFAR100_full_fmaps', 
+                         model=args.cloud_arch, 
+                         layer=args.pretrain_layer, 
+                         scale=12,                   
+                         bitlength=64)
 fed_trainsets = torch.utils.data.random_split(trainset, [len(trainset) // args.num_clients] * args.num_clients)
 trainloaders = [torch.utils.data.DataLoader(
-    trainset, batch_size=128, shuffle=True, num_workers=4) for trainset in fed_trainsets]
+    trainset, batch_size=128, shuffle=True, num_workers=8) for trainset in fed_trainsets]
 
-testset = torchvision.datasets.CIFAR100(
-    root='./data', train=False, download=True, transform=transform_test)
+testset = torchvision.datasets.CIFAR100(root='./data', 
+                                        train=False, 
+                                        download=True, 
+                                        transform=transform_test) if not args.ezpc else \
+          CIFAR100wFmap(cifar100_root='./data', 
+                        transform=transform_test, 
+                        train=False,
+                        fmap_root='/mnt/disk1/CIFAR100_full_fmaps', 
+                        model=args.cloud_arch, 
+                        layer=args.pretrain_layer, 
+                        scale=12,                   
+                        bitlength=64)
 testloader = torch.utils.data.DataLoader(
-    testset, batch_size=100, shuffle=False, num_workers=4)
-
-if args.dp:
-    privacy_agents = [DP(trainset, sensitivity = None) for trainset in fed_trainsets]
-    test_privacy_agent = DP(testset, sensitivity = None)
-else:
-    privacy_agents = [None for trainset in fed_trainsets]
-    test_privacy_agent = None
+    testset, batch_size=100, shuffle=False, num_workers=8)
 
 classes = ('plane', 'car', 'bird', 'cat', 'deer',
            'dog', 'frog', 'horse', 'ship', 'truck')
@@ -107,13 +122,15 @@ cloud_net = resnet_archs['cloud'][args.cloud_arch](depth = args.pretrain_layer, 
 edge_arch = 'resnet18'
 nets = [freeze_keyword(resnet_archs['edge'][edge_arch](cloud_model = cloud_net,
                                                         depth = args.pretrain_layer,
-                                                        num_classes = 100
+                                                        num_classes = 100,
+                                                        use_ezpc = args.ezpc
                                                         ),
                         keyword = 'cloud_model'
                         ).to(device) for _ in range(args.num_clients)]
 net_init = resnet_archs['edge'][edge_arch](cloud_model = cloud_net,
                                             depth = args.pretrain_layer,
-                                            num_classes = 100
+                                            num_classes = 100,
+                                            use_ezpc = args.ezpc
                                             )
 
 if device == 'cuda':
@@ -146,22 +163,22 @@ schedulers = [torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=200)
               for optimizer in optimizers]
 
 # Training
-def train(epoch, net, trainloader, optimizer, privacy_agent):
+def train(epoch, net, trainloader, optimizer):
     print('\nEpoch: %d' % epoch)
     net.train()
     train_loss = 0
     correct = 0
     total = 0
-    for batch_idx, (inputs, targets) in enumerate(trainloader):
-        if args.dp:
-            inputs, dp_inputs, targets = inputs.to(device), \
-                                            privacy_agent.add_noise(inputs, args.epsilon).float().to(device), \
-                                            targets.to(device)
+    for batch_idx, (inputs, inputs2, targets) in enumerate(trainloader):
+        if args.ezpc:
+            inputs, inputs2, targets = inputs.to(device), \
+                                     inputs2.to(device), \
+                                     targets.to(device)
         else:
-            inputs, dp_inputs, targets = inputs.to(device), inputs.to(device), targets.to(device)
+            inputs, inputs2, targets = inputs.to(device), inputs.to(device), targets.to(device)
 
         optimizer.zero_grad()
-        outputs = net(inputs, dp_inputs)
+        outputs = net(inputs, inputs2)
         loss = criterion(outputs, targets)
         loss.backward()
         optimizer.step()
@@ -177,22 +194,22 @@ def train(epoch, net, trainloader, optimizer, privacy_agent):
     return train_loss/(batch_idx+1)
 
 
-def test(epoch, net, privacy_agent):
+def test(epoch, net):
     global best_acc
     net.eval()
     test_loss = 0
     correct = 0
     total = 0
     with torch.no_grad():
-        for batch_idx, (inputs, targets) in enumerate(testloader):
-            if args.dp:
-                inputs, dp_inputs, targets = inputs.to(device),  \
-                                                privacy_agent.add_noise(inputs, args.epsilon).float().to(device), \
-                                                targets.to(device)
+        for batch_idx, (inputs, inputs2, targets) in enumerate(testloader):
+            if args.ezpc:
+                inputs, inputs2, targets = inputs.to(device), \
+                                         inputs2.to(device), \
+                                         targets.to(device)
             else:
-                inputs, dp_inputs, targets = inputs.to(device), inputs.to(device), targets.to(device)
+                inputs, inputs2, targets = inputs.to(device), inputs.to(device), targets.to(device)
 
-            outputs = net(inputs, dp_inputs)
+            outputs = net(inputs, inputs2)
             loss = criterion(outputs, targets)
 
             test_loss += loss.item()
@@ -217,7 +234,7 @@ def test(epoch, net, privacy_agent):
         }
         if not os.path.isdir('checkpoint'):
             os.mkdir('checkpoint')
-        if args.dp:
+        if args.ezpc:
             ckpt_path = f'./checkpoint/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}_e_{args.epsilon:.1f}.pth'
         else:
             ckpt_path = f'./checkpoint/cifar100_{args.cloud_arch}_{args.num_clients}_{args.pretrain_layer}.pth'
@@ -227,8 +244,8 @@ def test(epoch, net, privacy_agent):
 
 for epoch in range(start_epoch, start_epoch+200):
     losses = []
-    for net, trainloader, optimizer, privacy_agent in zip(nets, trainloaders, optimizers, privacy_agents):
-        losses.append(train(epoch, net, trainloader, optimizer, privacy_agent))
+    for net, trainloader, optimizer in zip(nets, trainloaders, optimizers):
+        losses.append(train(epoch, net, trainloader, optimizer))
 
     if args.log is not None:
         log_value('train_loss', sum(losses) / len(losses), epoch)
@@ -236,7 +253,7 @@ for epoch in range(start_epoch, start_epoch+200):
     net_avg = aggregate_models(nets)
     distribute_models(net_avg, nets)
 
-    test(epoch, nets[0], test_privacy_agent)
+    test(epoch, nets[0])
     for scheduler in schedulers:
         scheduler.step()
 

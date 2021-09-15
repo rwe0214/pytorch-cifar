@@ -242,3 +242,75 @@ class DifferentialPrivacy:
         dp_img = (img + torch.from_numpy(noise))
 #         dp_img = np.clip(dp_img, 0, 1)
         return dp_img            
+
+import h5py
+import torchvision
+class CIFAR100wFmap(torch.utils.data.Dataset):
+    def __init__(self,
+                 cifar100_root='../data', 
+                 transform=None, 
+                 train=True,
+                 fmap_root='/mnt/disk1/CIFAR100_fmaps', 
+                 model='resnet506', 
+                 layer=1, 
+                 scale=12,                   
+                 bitlength=64):
+        self.mode = 'train' if train else 'test'
+        self.fmap_root = os.path.join(fmap_root, f'{model}_{layer}') 
+        self.train = train
+        self.scale = scale
+        self.bitlength = bitlength
+        self.layer = layer
+        self.cifar100 = torchvision.datasets.CIFAR100(
+                            root=cifar100_root, train=train, download=True, transform=transform)
+        self.cifar100_transform = transform
+        self.padding = {1:4, 2:2}
+        self.crop_size = {1: 32, 2: 16}
+        
+        assert(self.is_label_order_equal())
+        print('Labels\' order is verified')
+   
+    def __len__(self):
+        return self.cifar100.__len__()
+    
+    def is_hflipped(self):
+        # assume the transform method at index 0 is RandomHorizontalFlip
+        return (self.cifar100_transform.transforms[0]).is_flipped()
+    
+    def get_loc(self):
+        # assume the transform method at index 1 is RandomCrop
+        return (self.cifar100_transform.transforms[1]).get_loc()    
+    
+    def is_label_order_equal(self):
+        is_equal = False
+        with h5py.File(os.path.join(self.fmap_root, f'cifar100_{self.mode}.hdf5')) as f:
+            labels = f['labels']
+            is_equal = np.array_equal(labels, np.array(self.cifar100.targets))
+        return is_equal
+        
+    def __getitem__(self, idx):
+        img, target = self.cifar100.__getitem__(idx)
+        database = 'hf_fmaps' if self.train and self.is_hflipped() else 'fmaps'
+        with h5py.File(os.path.join(self.fmap_root, f'cifar100_{self.mode}.hdf5')) as f:
+            fmap = f[database][idx]
+        
+        # int2float
+        fmap = torch.from_numpy(fmap.astype(np.single))
+        fmap = fmap.reshape(2 ** (7 + self.layer), 2 ** (6 - self.layer), 2 ** (6 - self.layer))
+        fmap = fmap / (1 << self.scale)
+        
+        if not self.train:
+            return img, fmap, target
+
+        # get crop location
+        i, j = self.get_loc()
+
+        # pad and crop
+        padded = torch.nn.functional.pad(fmap, 
+                                         (self.padding[self.layer], 
+                                          self.padding[self.layer], 
+                                          self.padding[self.layer], 
+                                          self.padding[self.layer]))
+        fmap = padded[..., i:i+self.crop_size[self.layer], j:j+self.crop_size[self.layer]]
+        
+        return img, fmap, target
