@@ -284,7 +284,12 @@ class CIFAR100wFmap(torch.utils.data.Dataset):
     def is_label_order_equal(self):
         is_equal = False
         with h5py.File(os.path.join(self.fmap_root, f'cifar100_{self.mode}.hdf5')) as f:
+            print(self.fmap_root)
             labels = f['labels']
+            print(len(labels))
+            print(labels[:10])
+            print(len(self.cifar100.targets))
+            print(self.cifar100.targets[:10])
             is_equal = np.array_equal(labels, np.array(self.cifar100.targets))
         return is_equal
         
@@ -302,6 +307,7 @@ class CIFAR100wFmap(torch.utils.data.Dataset):
         if not self.train:
             return img, fmap, target
 
+        fmap = fmap.unsqueeze(0)
         # get crop location
         i, j = self.get_loc()
 
@@ -310,7 +316,9 @@ class CIFAR100wFmap(torch.utils.data.Dataset):
                                          (self.padding[self.layer], 
                                           self.padding[self.layer], 
                                           self.padding[self.layer], 
-                                          self.padding[self.layer]))
+                                          self.padding[self.layer]),
+                                         'replicate')
+        padded = padded.reshape(2 ** (7 + self.layer), 2 ** (6 - self.layer)+self.padding[self.layer]*2, 2 ** (6 - self.layer)+self.padding[self.layer]*2)
         fmap = padded[..., i:i+self.crop_size[self.layer], j:j+self.crop_size[self.layer]]
         
         return img, fmap, target

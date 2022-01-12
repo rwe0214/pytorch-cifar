@@ -4,7 +4,7 @@ __pycache__
 *.ipynb
 *.npy
 onnx/
-logs/
+*logs*/
 data/
 checkpoint/
 weights/
